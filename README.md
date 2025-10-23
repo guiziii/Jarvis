@@ -1,15 +1,16 @@
 # ChatGPTListener
 
-### Proposta: Assistente virtual com Chat GPT!
+### Proposta: Assistente virtual com ChatGPT
 
-## 1) O que foi utilizado?
+## 1) Tecnologias utilizadas
 
 - Python
-- OpenAI
+- OpenAI (API Chat)
 - WebBrowser
 - Speech_recognition
 - Pyttsx3
 - Os
+ - Python-dotenv
 
 
 ## 2) Demonstração
@@ -20,43 +21,70 @@
 
 ## 3) Funcionalidades
 
-1) "Ronaldo reiniciar computador":
-  - Reinicia o computador do usuário.
+1) "Ronaldo reiniciar computador": Reinicia o computador do usuário (Windows, Linux, macOS).
+2) "Ronaldo pode falar": Ativa a leitura por voz das respostas.
+3) "Ronaldo não falar"/"Ronaldo nao falar": Desativa a leitura por voz.
+4) "Volume médio"/"Volume medio": Ajusta volume para ~50% (Linux via amixer).
+5) "Abra o controle": Abre o painel de controle/sistema (depende do SO).
+6) "Abra o Google": Abre o Google no navegador padrão.
+7) "Documentação do React"/"Documentacao do React": Abre a documentação do React.
+8) "Abra o Youtube": Abre o YouTube.
+9) "Documentação material"/"Documentacao material": Abre a documentação do Material UI.
+10) "Valor do dólar"/"Valor do dolar": Pesquisa o valor do dólar.
+11) "Abra a Azure": Abre o Azure DevOps.
+12) "Desligar alarme": Finaliza o processo de alarmes (apenas Windows).
+13) "Ronaldo": Entra em modo pergunta e resposta via ChatGPT.
+14) "Ronaldo sair"/"Ronaldo encerrar": Encerra a aplicação.
 
-2) "Ronaldo pode falar":
-  - Libera o ronaldo a falar pelo alto falante.
-  
-3) "Ronaldo não falar":
-  - Bloqueia o ronaldo de falar pelo alto falante.
-  
-4) "Volume médio":
-  - Diminui pela metade o volume do alto falante.
+Observação: sinônimos sem acento são aceitos para alguns comandos.
 
-5) "Abra o controle":
-  - Abre o painel de controle do computaodor.
+## 4) Instalação e configuração
 
-6) "Abra o Google":
-  - Abre o site Google.
-  
-7) "Documentação do React":
-  - Abre o site da documentação do React.
-  
-8) "Abra o Youtube":
-  - Abre o site Youtube.
-  
-9) "Documentação material":
-  - Abre o site do Material UI.
+1. Requisitos do sistema:
+   - Python 3.9+
+   - Microfone operacional
+   - Linux: utilitário `amixer` (alsa-utils) para ajuste de volume opcional
+   - Dependências de sistema do áudio (ex.: PortAudio) e TTS
 
-10) "Valor do dólar":
-  - Abre o site do Google com pesquisa no valor do dólar atual.
-  
-11) "Abra a Azure":
-  - Abre o site da Azure.
-  
-12) "Desligar alarme":
-  - Desliga o alarme do computador.
+2. Instale dependências de sistema (exemplos Ubuntu/Debian):
+
+```bash
+sudo apt update
+sudo apt install -y portaudio19-dev python3-dev espeak ffmpeg alsa-utils
+```
+
+3. Configure o projeto:
+
+```bash
+python -m venv .venv
+source .venv/bin/activate
+pip install -r requirements.txt
+cp .env.example .env
+# Edite .env e preencha OPENAI_API_KEY
+```
+
+## 5) Execução
+
+```bash
+python ChatGptListener.py
+```
+
+Fale "Ronaldo" para ativar o modo de perguntas, ou diga um dos comandos listados.
 
 
-## Possíveis problemas de instalação 
+## 6) Possíveis problemas de instalação 
 
-1) https://stackoverflow.com/questions/73268630/error-could-not-build-wheels-for-pyaudio-which-is-required-to-install-pyprojec
+1) `PyAudio` pode exigir `portaudio`/ferramentas de compilação. Veja: `https://stackoverflow.com/questions/73268630/error-could-not-build-wheels-for-pyaudio-which-is-required-to-install-pyprojec`
+
+2) Em algumas distribuições, `pyttsx3` utiliza diferentes mecanismos de voz. Se não houver áudio, instale e configure `espeak` e `ffmpeg` ou escolha outra voz.
+
+3) Em Windows, alguns comandos (como volume/controle) têm comportamento diferente; ajuste conforme seu ambiente.
+
+---
+
+Melhorias recentes:
+- Migração para API de Chat da OpenAI (`gpt-4o-mini`) via `openai>=1.40.0`.
+- Leitura da chave via variável de ambiente (`.env`).
+- Mapeamento de comandos com handlers multiplataforma e sinônimos.
+- Reconhecimento de fala mais robusto (ajuste de ruído, timeouts melhores).
+- Comandos de saída e alternância de TTS aprimorados.
