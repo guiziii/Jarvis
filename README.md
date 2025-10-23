@@ -71,6 +71,20 @@ python ChatGptListener.py
 
 Fale "Ronaldo" para ativar o modo de perguntas, ou diga um dos comandos listados.
 
+### 5.1) Melhorias de captação (microfone)
+
+Você pode ajustar a qualidade e responsividade da captação via variáveis no `.env`:
+
+- STT_ENGINE: `google` (padrão) ou `openai` (usa Whisper, melhor qualidade, pago)
+- MIC_DEVICE_INDEX: índice do microfone (deixe vazio para padrão)
+- MIC_SAMPLE_RATE: exemplo `16000` ou `44100`
+- MIC_CHUNK_SIZE: tamanho do buffer, ex. `1024`
+- LISTEN_TIMEOUT, PHRASE_TIME_LIMIT: controle de tempo na escuta principal
+- AMBIENT_DURATION: duração da calibração de ruído ambiente (ex. `0.6` a `1.0`)
+- QA_TIMEOUT, QA_PHRASE_TIME_LIMIT: tempos na fase de pergunta
+- RECOGNITION_RETRIES: tentativas extras de reconhecimento
+- DYNAMIC_ENERGY, ENERGY_THRESHOLD, PAUSE_THRESHOLD, NON_SPEAKING_DURATION: parâmetros do `speech_recognition`
+
 
 ## 6) Possíveis problemas de instalação 
 

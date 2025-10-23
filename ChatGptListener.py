@@ -11,9 +11,45 @@ from openai import OpenAI
 # Carrega variáveis do .env, caso exista
 load_dotenv()
 
+
+def get_env_bool(var_name: str, default: bool) -> bool:
+    val = os.getenv(var_name)
+    if val is None:
+        return default
+    return val.strip().lower() in {"1", "true", "yes", "on"}
+
+
+def get_env_int(var_name: str, default: int | None) -> int | None:
+    val = os.getenv(var_name)
+    if val is None or val.strip() == "":
+        return default
+    try:
+        return int(val)
+    except ValueError:
+        return default
+
 # Inicializa TTS e OpenAI client
 engine = pyttsx3.init()
 client = OpenAI()
+
+# Configuração de captação via variáveis de ambiente
+STT_ENGINE = os.getenv('STT_ENGINE', 'google').strip().lower()  # 'google' | 'openai'
+MIC_DEVICE_INDEX = get_env_int('MIC_DEVICE_INDEX', None)
+MIC_SAMPLE_RATE = get_env_int('MIC_SAMPLE_RATE', None)
+MIC_CHUNK_SIZE = get_env_int('MIC_CHUNK_SIZE', 1024)
+
+LISTEN_TIMEOUT = get_env_int('LISTEN_TIMEOUT', 10) or 10
+PHRASE_TIME_LIMIT = get_env_int('PHRASE_TIME_LIMIT', 6) or 6
+AMBIENT_DURATION = float(os.getenv('AMBIENT_DURATION', '0.6'))
+QA_TIMEOUT = get_env_int('QA_TIMEOUT', 15) or 15
+QA_PHRASE_TIME_LIMIT = get_env_int('QA_PHRASE_TIME_LIMIT', 12) or 12
+RECOGNITION_RETRIES = get_env_int('RECOGNITION_RETRIES', 1) or 1
+
+# Parâmetros do recognizer
+DYNAMIC_ENERGY = get_env_bool('DYNAMIC_ENERGY', True)
+ENERGY_THRESHOLD = get_env_int('ENERGY_THRESHOLD', None)
+PAUSE_THRESHOLD = float(os.getenv('PAUSE_THRESHOLD', '0.8'))
+NON_SPEAKING_DURATION = float(os.getenv('NON_SPEAKING_DURATION', '0.5'))
 
 # URLs úteis
 url = 'https://www.google.com'
@@ -27,14 +63,33 @@ def set_volume_medium_linux() -> None:
     os.system('amixer -D pulse sset Master 50%')
 
 def transcribe_audio_to_text(filename: str) -> str:
-    recognizer = sr.Recognizer()
-    with sr.AudioFile(filename) as source:
-        audio = recognizer.record(source)
-    try:
-        return recognizer.recognize_google(audio, language='pt-BR')
-    except Exception:
-        print('Falha ao transcrever o áudio')
-        return ''
+    """Transcreve áudio usando o mecanismo definido em STT_ENGINE.
+
+    - google: usa SpeechRecognition + Google Web Speech API (gratuito, sujeito a limites)
+    - openai: usa Whisper API (requer OPENAI_API_KEY)
+    """
+    if STT_ENGINE == 'openai':
+        try:
+            with open(filename, 'rb') as audio_file:
+                result = client.audio.transcriptions.create(
+                    model='whisper-1',
+                    file=audio_file,
+                    language='pt',
+                )
+            text = getattr(result, 'text', None)
+            return (text or '').strip()
+        except Exception as e:
+            print(f'Falha ao transcrever com OpenAI Whisper: {e}')
+            return ''
+    else:
+        try:
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(filename) as source:
+                audio = recognizer.record(source)
+            return recognizer.recognize_google(audio, language='pt-BR')
+        except Exception as e:
+            print(f'Falha ao transcrever com Google: {e}')
+            return ''
 
 def generate_response(prompt: str) -> str:
     """Gera resposta usando a API de chat da OpenAI.
@@ -116,12 +171,39 @@ def kill_alarms_windows() -> None:
     else:
         print('O comando "Desligar alarme" está disponível apenas no Windows.')
 
+def _contains_activation(text: str, activation_word: str) -> bool:
+    text = text.lower()
+    activation_word = activation_word.lower()
+    return activation_word in text
+
+
+def _extract_after_activation(text: str, activation_word: str) -> str:
+    text = text.lower().strip()
+    activation_word = activation_word.lower().strip()
+    if activation_word not in text:
+        return ''
+    # Pega substring após a primeira ocorrência de 'activation_word'
+    idx = text.find(activation_word)
+    after = text[idx + len(activation_word):].strip()
+    return after
+
+
 def main() -> None:
     tts_enabled = True
     activation_word = 'ronaldo'
 
     recognizer = sr.Recognizer()
-    microphone = sr.Microphone()
+    recognizer.dynamic_energy_threshold = DYNAMIC_ENERGY
+    if ENERGY_THRESHOLD is not None:
+        recognizer.energy_threshold = ENERGY_THRESHOLD
+    recognizer.pause_threshold = PAUSE_THRESHOLD
+    recognizer.non_speaking_duration = NON_SPEAKING_DURATION
+
+    microphone = sr.Microphone(
+        device_index=MIC_DEVICE_INDEX,
+        sample_rate=MIC_SAMPLE_RATE,
+        chunk_size=MIC_CHUNK_SIZE,
+    )
 
     def set_tts_on() -> None:
         nonlocal tts_enabled
@@ -182,17 +264,43 @@ def main() -> None:
     }
 
     print("\nDiga 'Ronaldo' para conversar com o ChatGPT ou diga um comando.")
+    # Calibração inicial mais longa
+    try:
+        with microphone as source:
+            recognizer.adjust_for_ambient_noise(source, duration=max(1.0, AMBIENT_DURATION))
+    except Exception as e:
+        print(f'Falha na calibração inicial do microfone: {e}')
 
     while True:
         try:
             with microphone as source:
-                recognizer.adjust_for_ambient_noise(source, duration=0.5)
-                audio = recognizer.listen(source, phrase_time_limit=5, timeout=10)
+                # Recalibração breve a cada iteração para adaptar a ruído ambiente
+                recognizer.adjust_for_ambient_noise(source, duration=AMBIENT_DURATION)
+                audio = recognizer.listen(
+                    source,
+                    phrase_time_limit=PHRASE_TIME_LIMIT,
+                    timeout=LISTEN_TIMEOUT,
+                )
 
-            try:
-                transcription = recognizer.recognize_google(audio, language='pt-BR')
-            except sr.UnknownValueError:
-                continue
+            # Tentativas de reconhecimento
+            transcription = ''
+            for _ in range(max(1, RECOGNITION_RETRIES + 1)):
+                try:
+                    if STT_ENGINE == 'google':
+                        transcription = recognizer.recognize_google(audio, language='pt-BR')
+                    else:
+                        # grava temporariamente e usa Whisper
+                        tmpfile = 'tmp_listen.wav'
+                        with open(tmpfile, 'wb') as f:
+                            f.write(audio.get_wav_data())
+                        transcription = transcribe_audio_to_text(tmpfile)
+                    break
+                except sr.UnknownValueError:
+                    transcription = ''
+                    continue
+                except Exception:
+                    transcription = ''
+                    continue
 
             if not transcription:
                 continue
@@ -205,20 +313,30 @@ def main() -> None:
                 command_map[normalized]()
                 continue
 
-            # Suporta comandos no formato "ronaldo <comando>"
-            if normalized.startswith(activation_word + ' '):
-                possible_cmd = normalized
-                if possible_cmd in command_map:
-                    command_map[possible_cmd]()
-                    continue
+            # Suporta comandos com palavra de ativação na frase
+            if _contains_activation(normalized, activation_word):
+                after = _extract_after_activation(normalized, activation_word)
+                if after:
+                    # Tenta com e sem o prefixo 'ronaldo '
+                    prefixed = f'{activation_word} {after}'
+                    if prefixed in command_map:
+                        command_map[prefixed]()
+                        continue
+                    if after in command_map:
+                        command_map[after]()
+                        continue
 
             # Ativa modo pergunta/resposta
-            if normalized == activation_word:
+            if normalized == activation_word or (_contains_activation(normalized, activation_word) and not _extract_after_activation(normalized, activation_word)):
                 filename = 'input.wav'
                 speak_text('Pergunte qualquer coisa.', tts_enabled)
                 with microphone as source:
-                    recognizer.adjust_for_ambient_noise(source, duration=0.3)
-                    audio = recognizer.listen(source, phrase_time_limit=10, timeout=10)
+                    recognizer.adjust_for_ambient_noise(source, duration=max(0.3, AMBIENT_DURATION))
+                    audio = recognizer.listen(
+                        source,
+                        phrase_time_limit=QA_PHRASE_TIME_LIMIT,
+                        timeout=QA_TIMEOUT,
+                    )
                     with open(filename, 'wb') as f:
                         f.write(audio.get_wav_data())
 
