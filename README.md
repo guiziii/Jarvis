@@ -3,8 +3,6 @@
 A wake-word voice assistant for macOS:  
 **“Jarvis” → record → transcribe → route to OpenClaw → speak the response**.
 
-This repository contains **no hardcoded credentials**. All secrets must be provided via environment variables or local files that must NOT be committed to Git.
-
 ---
 
 ## ✨ Features
@@ -175,8 +173,3 @@ brew install portaudio
 pip install --force-reinstall pyaudio
 ```
 
----
-
-## 📜 License
-
-Add a license (MIT, Apache-2.0, etc.) before publishing if distributing publicly.
